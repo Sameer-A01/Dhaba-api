@@ -21,6 +21,7 @@ router.delete('/:id', authMiddleware, deleteRoom);
 
 // Table routes nested under a room
 router.post('/:id/tables/add', authMiddleware, addTable);
+
 router.put('/:roomId/tables/:tableId', authMiddleware, updateTable);
 router.delete('/:roomId/tables/:tableId', authMiddleware, deleteTable);
 

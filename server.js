@@ -18,6 +18,7 @@ import staffRoutes from "./routes/staffRoutes.js"; // ✅ Import staff routes
 import inventoryRoutes from "./routes/inventoryRoutes.js";
 import expenseRoutes from './routes/expenseRoutes.js';
 import roomRoutes from './routes/roomRoutes.js';
+import kotRoutes from './routes/kot.js';
 
 
 
@@ -60,6 +61,8 @@ app.use("/api/staff", staffRoutes);
 app.use("/api/inventory", inventoryRoutes);
 app.use('/api/expenses', expenseRoutes);
 app.use('/api/rooms', roomRoutes);
+app.use('/api/kot', kotRoutes);
+
 import "./utils/stockResetJob.js";
 // Start server
 app.listen(process.env.PORT, () => {

@@ -7,28 +7,29 @@ const discountSchema = new mongoose.Schema({
     enum: ['percentage', 'fixed'],
     default: 'fixed',
   },
-  value: { type: Number, required: true }, // e.g. 10% or $50
+  value: { type: Number, required: true },
   reason: { type: String },
-}, { _id: false }); // no need for _id in embedded object
+}, { _id: false });
 
 const orderSchema = new mongoose.Schema({
-  user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: false }, // optional for walk-in
 
   room: { type: mongoose.Schema.Types.ObjectId, ref: 'Room', required: true },
   table: { type: mongoose.Schema.Types.ObjectId, required: true },
+
+  kots: [{ type: mongoose.Schema.Types.ObjectId, ref: 'KOT' }], // NEW FIELD
 
   products: [
     {
       product: { type: mongoose.Schema.Types.ObjectId, ref: 'Product', required: true },
       quantity: { type: Number, required: true },
-      price: { type: Number, required: true }, // price at time of order
+      price: { type: Number, required: true },
     },
   ],
 
   discount: { type: discountSchema, default: null },
-
-  totalAmount: { type: Number, required: true }, // after discount
-  subTotal: { type: Number, required: true }, // before discount
+  totalAmount: { type: Number, required: true },
+  subTotal: { type: Number, required: true },
 
   status: {
     type: String,
