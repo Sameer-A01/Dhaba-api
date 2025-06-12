@@ -19,6 +19,17 @@ export const createKOT = async (req, res) => {
       return res.status(400).json({ message: 'Missing required fields or empty orderItems' });
     }
 
+    // Validate roomId and tableId
+    const room = await RoomModel.findById(roomId);
+    if (!room) {
+      return res.status(404).json({ message: `Room not found: ${roomId}` });
+    }
+
+    const table = room.tables.find((t) => t._id.toString() === tableId.toString());
+    if (!table) {
+      return res.status(404).json({ message: `Table ${tableId} not found in room ${roomId}` });
+    }
+
     // Validate product IDs exist
     for (const item of orderItems) {
       const exists = await Product.exists({ _id: item.product });
@@ -34,10 +45,17 @@ export const createKOT = async (req, res) => {
       tableId,
       roomId,
       orderItems,
-      createdBy
+      createdBy,
     });
 
     await newKOT.save();
+
+    // Update table status to occupied
+    await RoomModel.findOneAndUpdate(
+      { _id: roomId, 'tables._id': tableId },
+      { $set: { 'tables.$.status': 'occupied' } },
+      { new: true }
+    );
 
     res.status(201).json({ success: true, kot: newKOT });
   } catch (error) {
@@ -58,11 +76,23 @@ export const getAllKOTs = async (req, res) => {
     if (tableId) filter.tableId = tableId;
 
     const kots = await KOTModel.find(filter)
-      .populate('roomId', 'roomName')
       .populate('orderItems.product', 'name price')
-      .sort({ createdAt: -1 });
+      .lean();
 
-    res.status(200).json({ success: true, kots });
+    // Enrich KOTs with roomName and tableNumber
+    const enrichedKots = await Promise.all(
+      kots.map(async (kot) => {
+        const room = await RoomModel.findById(kot.roomId).lean();
+        const table = room?.tables.find((t) => t._id.toString() === kot.tableId.toString());
+        return {
+          ...kot,
+          roomName: room?.roomName || 'N/A',
+          tableNumber: table?.tableNumber || 'N/A',
+        };
+      })
+    );
+
+    res.status(200).json({ success: true, kots: enrichedKots });
   } catch (error) {
     console.error('Error fetching KOTs:', error);
     res.status(500).json({ success: false, message: 'Server error' });
@@ -73,12 +103,22 @@ export const getAllKOTs = async (req, res) => {
 export const getKOTById = async (req, res) => {
   try {
     const kot = await KOTModel.findById(req.params.id)
-      .populate('roomId', 'roomName')
-      .populate('orderItems.product', 'name price');
+      .populate('orderItems.product', 'name price')
+      .lean();
 
     if (!kot) return res.status(404).json({ success: false, message: 'KOT not found' });
 
-    res.status(200).json({ success: true, kot });
+    // Enrich with roomName and tableNumber
+    const room = await RoomModel.findById(kot.roomId).lean();
+    const table = room?.tables.find((t) => t._id.toString() === kot.tableId.toString());
+
+    const enrichedKot = {
+      ...kot,
+      roomName: room?.roomName || 'N/A',
+      tableNumber: table?.tableNumber || 'N/A',
+    };
+
+    res.status(200).json({ success: true, kot: enrichedKot });
   } catch (error) {
     console.error('Error fetching KOT:', error);
     res.status(500).json({ success: false, message: 'Server error' });
@@ -105,7 +145,7 @@ export const updateKOTStatus = async (req, res) => {
 
     res.status(200).json({ success: true, kot });
   } catch (error) {
-    console.error('Error updating KOT status:', error);
+    console.error('Error updating KOT:', error);
     res.status(500).json({ success: false, message: 'Server error' });
   }
 };
@@ -116,6 +156,21 @@ export const deleteKOT = async (req, res) => {
     const kot = await KOTModel.findByIdAndDelete(req.params.id);
 
     if (!kot) return res.status(404).json({ success: false, message: 'KOT not found' });
+
+    // Check if there are any remaining active KOTs for the table
+    const remainingKOTs = await KOTModel.countDocuments({
+      tableId: kot.tableId,
+      status: { $in: ['preparing', 'ready'] },
+    });
+
+    // If no active KOTs remain, set table status to available
+    if (remainingKOTs === 0) {
+      await RoomModel.findOneAndUpdate(
+        { _id: kot.roomId, 'tables._id': kot.tableId },
+        { $set: { 'tables.$.status': 'available' } },
+        { new: true }
+      );
+    }
 
     res.status(200).json({ success: true, message: 'KOT deleted successfully' });
   } catch (error) {
@@ -139,7 +194,17 @@ export const closeKOTsForTable = async (req, res) => {
       { new: true }
     );
 
-    res.status(200).json({ success: true, message: `${kots.nModified} KOTs closed successfully` });
+    // Set table status to available
+    const kot = await KOTModel.findOne({ tableId });
+    if (kot) {
+      await RoomModel.findOneAndUpdate(
+        { _id: kot.roomId, 'tables._id': tableId },
+        { $set: { 'tables.$.status': 'available' } },
+        { new: true }
+      );
+    }
+
+    res.status(200).json({ success: true, message: `${kots.modifiedCount} KOTs closed successfully` });
   } catch (error) {
     console.error('Error closing KOTs:', error);
     res.status(500).json({ success: false, message: 'Server error' });
