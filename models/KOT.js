@@ -19,6 +19,12 @@ const kotSchema = new mongoose.Schema({
     enum: ['preparing', 'ready'],
     default: 'preparing'
   },
+  // Add user reference for the bill
+  user: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: false
+  },
 
   createdBy: {
     type: String,

@@ -1,19 +1,27 @@
 import KOTModel from '../models/KOT.js';
 import RoomModel from '../models/Room.js';
 import Product from '../models/Product.js';
+import KOTCounter from '../models/KOTCounter.js';
 
-// Utility to generate sequential KOT numbers like KOT-001, KOT-002, etc.
+// Utility to generate daily-reset sequential KOT numbers like KOT-YYYYMMDD-001
 const generateKOTNumber = async () => {
-  const lastKOT = await KOTModel.findOne().sort({ createdAt: -1 });
-  const lastNumber = lastKOT ? parseInt(lastKOT.kotNumber?.split('-')[1] || '0', 10) : 0;
-  const nextNumber = (lastNumber + 1).toString().padStart(3, '0');
-  return `KOT-${nextNumber}`;
+  const today = new Date();
+  const formattedDate = today.toISOString().slice(0, 10).replace(/-/g, ''); // YYYYMMDD
+
+  const counter = await KOTCounter.findOneAndUpdate(
+    { date: formattedDate },
+    { $inc: { count: 1 } },
+    { new: true, upsert: true }
+  );
+
+  const paddedNumber = String(counter.count).padStart(3, '0');
+  return `KOT-${formattedDate}-${paddedNumber}`;
 };
 
 // Create a new KOT
 export const createKOT = async (req, res) => {
   try {
-    const { tableId, roomId, orderItems, createdBy } = req.body;
+    const { tableId, roomId, orderItems, user, createdBy } = req.body;
 
     if (!tableId || !roomId || !orderItems || orderItems.length === 0) {
       return res.status(400).json({ message: 'Missing required fields or empty orderItems' });
@@ -45,6 +53,7 @@ export const createKOT = async (req, res) => {
       tableId,
       roomId,
       orderItems,
+      user,
       createdBy,
     });
 
