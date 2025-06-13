@@ -72,27 +72,32 @@ const deleteCategory = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const productCount = await Product.countDocuments({ category: id });
-    if (productCount > 0) {
+    // Log category ID for debugging
+    console.log("Attempting to delete category:", id);
+
+    // Check for any products linked to this category
+    const associatedProducts = await Product.find({ category: id });
+    console.log("Found products:", associatedProducts.map(p => p.name)); // debug log
+
+    if (associatedProducts.length > 0) {
       return res.status(400).json({
         success: false,
         error: "Cannot delete category with associated products",
+        products: associatedProducts, // helpful for debugging
       });
     }
 
-    const category = await Category.findByIdAndDelete({ _id: id });
-    if (!category) {
-      res
-        .status(404)
-        .json({ success: false, error: "document not found " + error.message });
+    const deletedCategory = await Category.findByIdAndDelete(id);
+    if (!deletedCategory) {
+      return res.status(404).json({ success: false, error: "Category not found" });
     }
-    res.status(201).json({ success: true, category });
+
+    res.status(200).json({ success: true, message: "Category deleted", category: deletedCategory });
   } catch (error) {
-    console.error("Error editing category:", error);
-    res
-      .status(500)
-      .json({ success: false, error: "Server error " + error.message });
+    console.error("Error deleting category:", error);
+    res.status(500).json({ success: false, error: "Server error: " + error.message });
   }
 };
+
 
 export { addCategory, getCategorys, updateCategory, deleteCategory };

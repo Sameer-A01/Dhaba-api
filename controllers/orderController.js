@@ -1,10 +1,11 @@
 import Product from "../models/Product.js";
 import Order from "../models/Order.js";
 import Room from "../models/Room.js";
+import KOTModel from "../models/KOT.js"; // Added missing import
 
 const addOrder = async (req, res) => {
   try {
-    const { products, discount, roomId, tableId } = req.body;
+    const { products, discount, roomId, tableId, kotIds } = req.body;
     const userId = req.user._id;
 
     if (!roomId || !tableId) {
@@ -20,6 +21,16 @@ const addOrder = async (req, res) => {
     const table = room.tables.find(t => t._id.toString() === tableId);
     if (!table) {
       return res.status(404).json({ error: "Table not found in selected room" });
+    }
+
+    // Validate KOTs if provided
+    let validatedKotIds = [];
+    if (kotIds && kotIds.length > 0) {
+      const kots = await KOTModel.find({ _id: { $in: kotIds } });
+      if (kots.length !== kotIds.length) {
+        return res.status(404).json({ error: "One or more KOTs not found" });
+      }
+      validatedKotIds = kotIds;
     }
 
     const orderItems = [];
@@ -65,6 +76,7 @@ const addOrder = async (req, res) => {
       user: userId,
       room: roomId,
       table: tableId,
+      kots: validatedKotIds, // Use validated KOT IDs
       products: orderItems,
       discount: appliedDiscount,
       subTotal,
@@ -73,10 +85,32 @@ const addOrder = async (req, res) => {
 
     await order.save();
 
-    res.status(201).json({ success: true, message: "Order created successfully", order });
+    // Update KOTs with order reference
+    if (validatedKotIds.length > 0) {
+      await KOTModel.updateMany(
+        { _id: { $in: validatedKotIds } },
+        { $set: { order: order._id } }
+      );
+    }
+
+    // Populate the response with full order details
+    const populatedOrder = await Order.findById(order._id)
+      .populate('products.product', 'name price')
+      .populate('room', 'roomName')
+      .populate('user', 'name address')
+      .populate({
+        path: 'kots',
+        select: 'kotNumber status orderItems createdAt',
+        populate: {
+          path: 'orderItems.product',
+          select: 'name price'
+        }
+      });
+
+    res.status(201).json({ success: true, message: "Order created successfully", order: populatedOrder });
   } catch (error) {
-    console.error("Add Order Error:", error);
-    res.status(500).json({ success: false, error: "Server error" });
+    console.error("Add Order Error:", error.message, error.stack);
+    res.status(500).json({ success: false, error: "Server error: " + error.message });
   }
 };
 
@@ -97,16 +131,24 @@ const getOrders = async (req, res) => {
           path: 'category',
           select: 'name'
         },
-        select: 'name'
+        select: 'name price'
       })
       .populate('room', 'roomName')
       .populate('user', 'name address')
+      .populate({
+        path: 'kots',
+        select: 'kotNumber status orderItems createdAt',
+        populate: {
+          path: 'orderItems.product',
+          select: 'name price'
+        }
+      })
       .sort({ createdAt: -1 });
 
     res.status(200).json({ success: true, orders });
   } catch (err) {
-    console.error("Get Orders Error:", err);
-    res.status(500).json({ success: false, error: 'Failed to fetch orders' });
+    console.error("Get Orders Error:", err.message, err.stack);
+    res.status(500).json({ success: false, error: 'Failed to fetch orders: ' + err.message });
   }
 };
 
