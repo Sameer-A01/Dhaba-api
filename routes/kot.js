@@ -6,7 +6,8 @@ import {
   getKOTById,
   updateKOTStatus,
   deleteKOT,
-  closeKOTsForTable
+  closeKOTsForTable,
+   updateKOT  // Add this import
 } from '../controllers/KOTController.js';
 
 const router = express.Router();
@@ -34,5 +35,8 @@ router.delete('/:id', authMiddleware, deleteKOT);
 // @route   PUT /api/kot/close/:tableId
 // @desc    Close all KOTs for a table
 router.put('/close/:tableId', authMiddleware, closeKOTsForTable);
+// @route   PUT /api/kot/:id
+// @desc    Update KOT details (order items, table, etc.)
+router.put('/:id', authMiddleware, updateKOT);
 
 export default router;

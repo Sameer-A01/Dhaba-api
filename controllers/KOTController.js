@@ -219,3 +219,85 @@ export const closeKOTsForTable = async (req, res) => {
     res.status(500).json({ success: false, message: 'Server error' });
   }
 };
+// Update KOT details (order items, etc.)
+export const updateKOT = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { orderItems, tableId, roomId, user } = req.body;
+
+    // Find the existing KOT
+    const existingKOT = await KOTModel.findById(id);
+    if (!existingKOT) {
+      return res.status(404).json({ success: false, message: 'KOT not found' });
+    }
+
+    // Validate products if orderItems are being updated
+    if (orderItems && orderItems.length > 0) {
+      for (const item of orderItems) {
+        const exists = await Product.exists({ _id: item.product });
+        if (!exists) {
+          return res.status(404).json({ message: `Product not found: ${item.product}` });
+        }
+      }
+    }
+
+    // Validate room and table if they're being changed
+    if (roomId || tableId) {
+      const newRoomId = roomId || existingKOT.roomId;
+      const newTableId = tableId || existingKOT.tableId;
+
+      const room = await RoomModel.findById(newRoomId);
+      if (!room) {
+        return res.status(404).json({ message: `Room not found: ${newRoomId}` });
+      }
+
+      const table = room.tables.find((t) => t._id.toString() === newTableId.toString());
+      if (!table) {
+        return res.status(404).json({ message: `Table ${newTableId} not found in room ${newRoomId}` });
+      }
+
+      // If table is being changed, update table statuses
+      if (tableId && tableId !== existingKOT.tableId.toString()) {
+        // Set old table to available if no other active KOTs exist
+        const oldTableKOTCount = await KOTModel.countDocuments({
+          tableId: existingKOT.tableId,
+          status: { $in: ['preparing', 'ready'] },
+          _id: { $ne: id } // Exclude current KOT
+        });
+
+        if (oldTableKOTCount === 0) {
+          await RoomModel.findOneAndUpdate(
+            { _id: existingKOT.roomId, 'tables._id': existingKOT.tableId },
+            { $set: { 'tables.$.status': 'available' } }
+          );
+        }
+
+        // Set new table to occupied
+        await RoomModel.findOneAndUpdate(
+          { _id: newRoomId, 'tables._id': newTableId },
+          { $set: { 'tables.$.status': 'occupied' } }
+        );
+      }
+    }
+
+    // Prepare update object
+    const updateData = {};
+    if (orderItems) updateData.orderItems = orderItems;
+    if (tableId) updateData.tableId = tableId;
+    if (roomId) updateData.roomId = roomId;
+    if (user) updateData.user = user;
+    updateData.updatedAt = new Date();
+
+    // Update the KOT
+    const updatedKOT = await KOTModel.findByIdAndUpdate(
+      id,
+      updateData,
+      { new: true }
+    ).populate('orderItems.product', 'name price');
+
+    res.status(200).json({ success: true, kot: updatedKOT });
+  } catch (error) {
+    console.error('Error updating KOT:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+};

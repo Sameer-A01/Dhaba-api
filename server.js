@@ -45,7 +45,7 @@ app.use("/uploads", express.static("uploads"));
 
 // Simple GET route for browser access
 app.get("/api", (req, res) => {
-  res.send("Welcome to the API. Server is running successfully.");
+  res.send("Welcome to the Royal King Dhaba Server. Server is running successfully.");
 });
 
 // API routes

@@ -152,4 +152,131 @@ const getOrders = async (req, res) => {
   }
 };
 
-export { addOrder, getOrders };
+const getOrderById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const order = await Order.findById(id)
+      .populate('products.product', 'name price stock')
+      .populate('room', 'roomName')
+      .populate('user', 'name address')
+      .populate({
+        path: 'kots',
+        select: 'kotNumber status orderItems createdAt',
+        populate: {
+          path: 'orderItems.product',
+          select: 'name price'
+        }
+      });
+
+    if (!order) {
+      return res.status(404).json({ success: false, error: 'Order not found' });
+    }
+
+    res.status(200).json({ success: true, order });
+  } catch (error) {
+    console.error("Get Order Error:", error.message, error.stack);
+    res.status(500).json({ success: false, error: "Server error: " + error.message });
+  }
+};
+
+const updateOrder = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { products, discount } = req.body;
+
+    // Find the existing order
+    const existingOrder = await Order.findById(id);
+    if (!existingOrder) {
+      return res.status(404).json({ success: false, error: 'Order not found' });
+    }
+
+    // If order is already completed or cancelled, don't allow edits
+    if (existingOrder.status === 'completed' || existingOrder.status === 'cancelled') {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Cannot edit a completed or cancelled order' 
+      });
+    }
+
+    // Calculate differences between old and new products
+    const oldProducts = existingOrder.products;
+    const newProducts = [];
+
+    // First, restore stock for removed products
+    for (const oldItem of oldProducts) {
+      const product = await Product.findById(oldItem.product);
+      if (product) {
+        product.stock += oldItem.quantity;
+        await product.save();
+      }
+    }
+
+    // Then process new product quantities
+    let subTotal = 0;
+    for (const newItem of products) {
+      const product = await Product.findById(newItem.productId);
+      if (!product) {
+        return res.status(404).json({ 
+          success: false, 
+          error: `Product with ID ${newItem.productId} not found` 
+        });
+      }
+
+      if (newItem.quantity > product.stock) {
+        return res.status(400).json({ 
+          success: false, 
+          error: `Not enough stock for product ${product.name}` 
+        });
+      }
+
+      product.stock -= newItem.quantity;
+      await product.save();
+
+      newProducts.push({
+        product: newItem.productId,
+        quantity: newItem.quantity,
+        price: product.price
+      });
+
+      subTotal += product.price * newItem.quantity;
+    }
+
+    // Apply discount
+    let totalAmount = subTotal;
+    let appliedDiscount = null;
+
+    if (discount) {
+      const { type, value, reason } = discount;
+      if (type === 'percentage') {
+        totalAmount -= (value / 100) * subTotal;
+      } else if (type === 'fixed') {
+        totalAmount -= value;
+      }
+      appliedDiscount = { type, value, reason };
+    }
+
+    // Update the order
+    const updatedOrder = await Order.findByIdAndUpdate(
+      id,
+      {
+        products: newProducts,
+        discount: appliedDiscount,
+        subTotal,
+        totalAmount,
+        updatedAt: new Date()
+      },
+      { new: true }
+    ).populate('products.product', 'name price');
+
+    res.status(200).json({ 
+      success: true, 
+      message: "Order updated successfully", 
+      order: updatedOrder 
+    });
+  } catch (error) {
+    console.error("Update Order Error:", error.message, error.stack);
+    res.status(500).json({ success: false, error: "Server error: " + error.message });
+  }
+};
+
+export { addOrder, getOrders ,updateOrder,getOrderById };

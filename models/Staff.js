@@ -26,6 +26,7 @@ const staffSchema = new mongoose.Schema({
   },
   gender: {
     type: String,
+     required: [true, "Staff gender is required"],
     enum: ["Male", "Female", "Other"],
   },
   role: {
