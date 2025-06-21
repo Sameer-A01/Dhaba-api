@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import Product from "../models/Product.js";
 import Order from "../models/Order.js";
 import Room from "../models/Room.js";
@@ -278,5 +279,76 @@ const updateOrder = async (req, res) => {
     res.status(500).json({ success: false, error: "Server error: " + error.message });
   }
 };
+const deleteOrder = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reason } = req.body;
+    const userId = req.user?._id;
 
-export { addOrder, getOrders ,updateOrder,getOrderById };
+    if (!reason) {
+      return res.status(400).json({ success: false, error: 'Deletion reason is required' });
+    }
+
+    if (!userId) {
+      return res.status(401).json({ success: false, error: 'User not authenticated' });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, error: 'Invalid order ID' });
+    }
+
+    const order = await Order.findById(id);
+    if (!order) {
+      return res.status(404).json({ success: false, error: 'Order not found' });
+    }
+
+    for (const item of order.products) {
+      try {
+        const product = await Product.findById(item.product);
+        if (product) {
+          product.stock += item.quantity;
+          await product.save();
+        } else {
+          console.warn(`Product with ID ${item.product} not found, skipping stock update`);
+        }
+      } catch (err) {
+        console.error(`Error updating product ${item.product}:`, err.message);
+      }
+    }
+
+    order.status = 'deleted';
+    order.deletionInfo = {
+      deletedAt: new Date(),
+      deletedBy: userId,
+      reason: reason
+    };
+
+    await order.save();
+
+    res.status(200).json({ 
+      success: true, 
+      message: "Order deleted successfully",
+      deletedOrder: order
+    });
+  } catch (error) {
+    console.error("Delete Order Error:", error.message, error.stack);
+    res.status(500).json({ success: false, error: `Server error: ${error.message}` });
+  }
+};
+
+
+const getDeletedOrders = async (req, res) => {
+  try {
+    const deletedOrders = await Order.find({ status: 'deleted' })
+      .populate('deletionInfo.deletedBy', 'name email')
+      .populate('user', 'name')
+      .sort({ 'deletionInfo.deletedAt': -1 });
+
+    res.status(200).json({ success: true, orders: deletedOrders });
+  } catch (error) {
+    console.error('Get Deleted Orders Error:', error.message, error.stack);
+    res.status(500).json({ success: false, error: 'Server error: ' + error.message });
+  }
+};
+
+export { addOrder, getOrders ,updateOrder,getOrderById, deleteOrder,getDeletedOrders };

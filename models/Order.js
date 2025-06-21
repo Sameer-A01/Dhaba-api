@@ -11,6 +11,12 @@ const discountSchema = new mongoose.Schema({
   reason: { type: String },
 }, { _id: false });
 
+const deletionInfoSchema = new mongoose.Schema({
+  deletedAt: { type: Date, required: true },
+  deletedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  reason: { type: String, required: true },
+}, { _id: false });
+
 const orderSchema = new mongoose.Schema({
   user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: false }, // optional for walk-in
 
@@ -31,11 +37,11 @@ const orderSchema = new mongoose.Schema({
   totalAmount: { type: Number, required: true },
   subTotal: { type: Number, required: true },
 
-  status: {
-    type: String,
-    enum: ['pending', 'in-progress', 'completed', 'cancelled'],
-    default: 'pending',
-  },
+status: {
+  type: String,
+  enum: ['pending', 'in-progress', 'completed', 'cancelled', 'deleted'],
+  default: 'pending',
+},
 
   paymentMethod: {
     type: String,
@@ -44,6 +50,7 @@ const orderSchema = new mongoose.Schema({
   },
 
   orderDate: { type: Date, default: Date.now },
+  deletionInfo: { type: deletionInfoSchema }, // New field for deletion tracking
 }, { timestamps: true });
 
 const OrderModel = mongoose.model('Order', orderSchema);

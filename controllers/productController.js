@@ -134,4 +134,6 @@ const deleteProduct = async (req, res) => {
   }
 };
 
+
+
 export { addProduct, getProducts, updateProduct, deleteProduct };
