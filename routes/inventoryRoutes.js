@@ -8,6 +8,9 @@ import {
   deleteInventoryItem,
   getItemsByCategory,
   getLowStockItems,
+  recordInventoryUsage,
+  getUsageHistory,
+  getUsageStatistics,
 } from "../controllers/inventoryController.js";
 
 const router = express.Router();
@@ -17,6 +20,12 @@ router.post("/add", authMiddleware, createInventoryItem);
 
 // Get all inventory items
 router.get("/", authMiddleware, getAllInventoryItems);
+
+// Get usage statistics (moved before /:id)
+router.get("/usage-statistics", authMiddleware, getUsageStatistics);
+
+// Get usage history for an item
+router.get("/usage/:id", authMiddleware, getUsageHistory);
 
 // Get inventory item by ID
 router.get("/:id", authMiddleware, getInventoryItemById);
@@ -32,5 +41,8 @@ router.get("/category/:category", authMiddleware, getItemsByCategory);
 
 // Get low-stock items
 router.get("/low-stock/items", authMiddleware, getLowStockItems);
+
+// Record inventory usage
+router.post("/usage", authMiddleware, recordInventoryUsage);
 
 export default router;

@@ -1,5 +1,5 @@
 import cron from "node-cron";
-import Inventory from "../models/Inventory.js";
+import Inventory from "../models/Inventory.js"; // Default import
 
 // Run every day at midnight
 cron.schedule("0 0 * * *", async () => {
@@ -17,7 +17,13 @@ cron.schedule("0 0 * * *", async () => {
           $lte: endOfDay,
         },
       },
-      { $set: { quantity: 0 } }
+      {
+        $set: {
+          quantity: "$minStockLevel", // Reset to minStockLevel
+          stockResetDate: null, // Clear the reset date
+          updatedAt: new Date(),
+        },
+      }
     );
 
     console.log(
@@ -27,3 +33,10 @@ cron.schedule("0 0 * * *", async () => {
     console.error("Error during stock reset:", error);
   }
 });
+
+// Export a function to start the job (optional, for explicit control)
+export const startStockResetJob = () => {
+  console.log("Stock reset job scheduled.");
+};
+
+export default startStockResetJob;
