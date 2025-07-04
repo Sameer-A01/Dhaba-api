@@ -2,15 +2,24 @@ import mongoose from 'mongoose';
 import Product from "../models/Product.js";
 import Order from "../models/Order.js";
 import Room from "../models/Room.js";
-import KOTModel from "../models/KOT.js"; // Added missing import
+import KOTModel from "../models/KOT.js";
+
+// Hardcoded tax rate to match frontend (5%)
+const TAX_RATE = 5;
 
 const addOrder = async (req, res) => {
   try {
-    const { products, discount, roomId, tableId, kotIds } = req.body;
+    const { products, discount, roomId, tableId, kotIds, paymentMethod } = req.body;
     const userId = req.user._id;
 
     if (!roomId || !tableId) {
       return res.status(400).json({ error: "Room and Table must be selected" });
+    }
+
+    // Validate payment method
+    const validPaymentMethods = ['cash', 'card', 'upi', 'wallet'];
+    if (!paymentMethod || !validPaymentMethods.includes(paymentMethod)) {
+      return res.status(400).json({ error: "Invalid or missing payment method" });
     }
 
     // Verify room and table exist
@@ -60,28 +69,33 @@ const addOrder = async (req, res) => {
     }
 
     // Apply discount
-    let totalAmount = subTotal;
+    let subtotalAfterDiscount = subTotal;
     let appliedDiscount = null;
 
     if (discount) {
       const { type, value, reason } = discount;
       if (type === 'percentage') {
-        totalAmount -= (value / 100) * subTotal;
+        subtotalAfterDiscount -= (value / 100) * subTotal;
       } else if (type === 'fixed') {
-        totalAmount -= value;
+        subtotalAfterDiscount -= value;
       }
       appliedDiscount = { type, value, reason };
     }
+
+    // Calculate tax
+    const taxAmount = (subtotalAfterDiscount * TAX_RATE) / 100;
+    const totalAmount = subtotalAfterDiscount + taxAmount;
 
     const order = new Order({
       user: userId,
       room: roomId,
       table: tableId,
-      kots: validatedKotIds, // Use validated KOT IDs
+      kots: validatedKotIds,
       products: orderItems,
       discount: appliedDiscount,
       subTotal,
-      totalAmount
+      totalAmount,
+      paymentMethod
     });
 
     await order.save();
@@ -183,7 +197,7 @@ const getOrderById = async (req, res) => {
 const updateOrder = async (req, res) => {
   try {
     const { id } = req.params;
-    const { products, discount } = req.body;
+    const { products, discount, paymentMethod } = req.body;
 
     // Find the existing order
     const existingOrder = await Order.findById(id);
@@ -199,11 +213,17 @@ const updateOrder = async (req, res) => {
       });
     }
 
+    // Validate payment method if provided
+    const validPaymentMethods = ['cash', 'card', 'upi', 'wallet'];
+    if (paymentMethod && !validPaymentMethods.includes(paymentMethod)) {
+      return res.status(400).json({ error: "Invalid payment method" });
+    }
+
     // Calculate differences between old and new products
     const oldProducts = existingOrder.products;
     const newProducts = [];
 
-    // First, restore stock for removed products
+    // Restore stock for removed products
     for (const oldItem of oldProducts) {
       const product = await Product.findById(oldItem.product);
       if (product) {
@@ -212,7 +232,7 @@ const updateOrder = async (req, res) => {
       }
     }
 
-    // Then process new product quantities
+    // Process new product quantities
     let subTotal = 0;
     for (const newItem of products) {
       const product = await Product.findById(newItem.productId);
@@ -243,18 +263,22 @@ const updateOrder = async (req, res) => {
     }
 
     // Apply discount
-    let totalAmount = subTotal;
+    let subtotalAfterDiscount = subTotal;
     let appliedDiscount = null;
 
     if (discount) {
       const { type, value, reason } = discount;
       if (type === 'percentage') {
-        totalAmount -= (value / 100) * subTotal;
+        subtotalAfterDiscount -= (value / 100) * subTotal;
       } else if (type === 'fixed') {
-        totalAmount -= value;
+        subtotalAfterDiscount -= value;
       }
       appliedDiscount = { type, value, reason };
     }
+
+    // Calculate tax
+    const taxAmount = (subtotalAfterDiscount * TAX_RATE) / 100;
+    const totalAmount = subtotalAfterDiscount + taxAmount;
 
     // Update the order
     const updatedOrder = await Order.findByIdAndUpdate(
@@ -264,6 +288,7 @@ const updateOrder = async (req, res) => {
         discount: appliedDiscount,
         subTotal,
         totalAmount,
+        paymentMethod: paymentMethod || existingOrder.paymentMethod,
         updatedAt: new Date()
       },
       { new: true }
@@ -279,6 +304,7 @@ const updateOrder = async (req, res) => {
     res.status(500).json({ success: false, error: "Server error: " + error.message });
   }
 };
+
 const deleteOrder = async (req, res) => {
   try {
     const { id } = req.params;
@@ -336,7 +362,6 @@ const deleteOrder = async (req, res) => {
   }
 };
 
-
 const getDeletedOrders = async (req, res) => {
   try {
     const deletedOrders = await Order.find({ status: 'deleted' })
@@ -351,4 +376,4 @@ const getDeletedOrders = async (req, res) => {
   }
 };
 
-export { addOrder, getOrders ,updateOrder,getOrderById, deleteOrder,getDeletedOrders };
+export { addOrder, getOrders, updateOrder, getOrderById, deleteOrder, getDeletedOrders };

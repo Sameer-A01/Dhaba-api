@@ -34,7 +34,6 @@ const addCategory = async (req, res) => {
 };
 
 const getCategorys = async (req, res) => {
-  console.log("get category");
   try {
     const categories = await Category.find();
     return res.status(201).json({ success: true, categories });
